@@ -4,6 +4,18 @@ on:
   push:
     tags:
       - "*"
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: '指定架构（留空则构建全部）'
+        required: false
+        default: 'all'
+        type: string
+      tag:
+        description: '指定OpenWrt版本（留空则构建全部）'
+        required: false
+        default: 'all'
+        type: string
 
 jobs:
   build:
@@ -60,11 +72,35 @@ jobs:
           sed -i '/golang-package/a \\tGO_PKG_DEFAULT_LDFLAGS:=-w -s -extldflags "-static"' v2dat/Makefile
           git clone https://github.com/sbwml/v2ray-geodata
           echo "SKIP_BUILD=0" >> $GITHUB_ENV
+          
+          # 检查是否跳过构建
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # 手动触发时的过滤逻辑
+            ARCH_FILTER="${{ inputs.arch }}"
+            TAG_FILTER="${{ inputs.tag }}"
+            
+            # 检查架构过滤
+            if [ "$ARCH_FILTER" != "all" ] && [ "$ARCH_FILTER" != "${{ matrix.arch }}" ]; then
+              echo "SKIP_BUILD=1" >> $GITHUB_ENV
+              echo "Skipping ${{ matrix.arch }} (filtered by manual input)"
+              exit 0
+            fi
+            
+            # 检查版本过滤
+            if [ "$TAG_FILTER" != "all" ] && [ "$TAG_FILTER" != "${{ matrix.tag }}" ]; then
+              echo "SKIP_BUILD=1" >> $GITHUB_ENV
+              echo "Skipping ${{ matrix.tag }} (filtered by manual input)"
+              exit 0
+            fi
+          fi
+          
+          # 特殊架构处理
           if [ "${{ matrix.tag }}" = "openwrt-25.12" ] && [ "${{ matrix.arch }}" = "riscv64_riscv64" ]; then
             echo "EFFECTIVE_ARCH=riscv64_generic" >> $GITHUB_ENV
             echo "ARCH=riscv64_generic-${{ matrix.tag }}" >> $GITHUB_ENV
           elif [ "${{ matrix.tag }}" = "openwrt-25.12" ] && [ "${{ matrix.arch }}" = "mips_4kec" ]; then
             echo "SKIP_BUILD=1" >> $GITHUB_ENV
+            echo "Skipping mips_4kec on openwrt-25.12 (unsupported)"
           else
             echo "EFFECTIVE_ARCH=${{ matrix.arch }}" >> $GITHUB_ENV
             echo "ARCH=${{ matrix.arch }}-${{ matrix.tag }}" >> $GITHUB_ENV
